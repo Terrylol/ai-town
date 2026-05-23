@@ -42,9 +42,9 @@ export async function rememberConversation(
   const llmMessages: LLMMessage[] = [
     {
       role: 'user',
-      content: `You are ${player.name}, and you just finished a conversation with ${otherPlayer.name}. I would
-      like you to summarize the conversation from ${player.name}'s perspective, using first-person pronouns like
-      "I," and add if you liked or disliked this interaction.`,
+      content: `你是${player.name}，你刚刚结束了和${otherPlayer.name}的对话。
+      请始终使用简体中文。请从${player.name}的第一人称视角总结这场对话，使用“我”这样的第一人称表达，
+      并补充说明你喜欢还是不喜欢这次互动，以及原因。`,
     },
   ];
   const authors = new Set<GameId<'players'>>();
@@ -54,17 +54,21 @@ export async function rememberConversation(
     const recipient = message.author === player.id ? otherPlayer : player;
     llmMessages.push({
       role: 'user',
-      content: `${author.name} to ${recipient.name}: ${message.text}`,
+      content: `${author.name}对${recipient.name}说：${message.text}`,
     });
   }
-  llmMessages.push({ role: 'user', content: 'Summary:' });
+  llmMessages.push({ role: 'user', content: '中文总结：' });
   const { content } = await chatCompletion({
     messages: llmMessages,
     max_tokens: 500,
   });
-  const description = `Conversation with ${otherPlayer.name} at ${new Date(
+  if (!content.trim()) {
+    console.warn(`Skipping empty conversation memory for ${conversationId}`);
+    return;
+  }
+  const description = `与${otherPlayer.name}在${new Date(
     data.conversation._creationTime,
-  ).toLocaleString()}: ${content}`;
+  ).toLocaleString()}的对话：${content}`;
   const importance = await calculateImportance(description);
   const { embedding } = await fetchEmbedding(description);
   authors.delete(player.id as GameId<'players'>);
@@ -248,9 +252,9 @@ async function calculateImportance(description: string) {
     messages: [
       {
         role: 'user',
-        content: `On the scale of 0 to 9, where 0 is purely mundane (e.g., brushing teeth, making bed) and 9 is extremely poignant (e.g., a break up, college acceptance), rate the likely poignancy of the following piece of memory.
-      Memory: ${description}
-      Answer on a scale of 0 to 9. Respond with number only, e.g. "5"`,
+        content: `请给下面这段记忆的重要性打分，范围是0到9。0表示非常日常，9表示极其重要或情绪冲击很强。
+      记忆：${description}
+      只回复一个数字，例如“5”。`,
       },
     ],
     temperature: 0.0,
@@ -347,16 +351,21 @@ async function reflectOnMemories(
   }
   console.debug('sum of importance score = ', sumOfImportanceScore);
   console.debug('Reflecting...');
-  const prompt = ['[no prose]', '[Output only JSON]', `You are ${name}, statements about you:`];
+  const prompt = [
+    '[不要解释]',
+    '[只输出 JSON]',
+    '请始终使用简体中文。',
+    `你是${name}，以下是关于你的陈述：`,
+  ];
   memories.forEach((m, idx) => {
-    prompt.push(`Statement ${idx}: ${m.description}`);
+    prompt.push(`陈述 ${idx}：${m.description}`);
   });
-  prompt.push('What 3 high-level insights can you infer from the above statements?');
+  prompt.push('你能从以上陈述中推断出哪3条高层次洞察？');
   prompt.push(
-    'Return in JSON format, where the key is a list of input statements that contributed to your insights and value is your insight. Make the response parseable by Typescript JSON.parse() function. DO NOT escape characters or include "\n" or white space in response.',
+    '请返回 JSON 数组，每项包含 insight 和 statementIds。statementIds 是支持该洞察的陈述编号数组。返回结果必须能被 Typescript JSON.parse() 解析。不要包含换行或额外说明。',
   );
   prompt.push(
-    'Example: [{insight: "...", statementIds: [1,2]}, {insight: "...", statementIds: [1]}, ...]',
+    '示例：[{"insight":"……","statementIds":[1,2]},{"insight":"……","statementIds":[1]}]',
   );
 
   const { content: reflection } = await chatCompletion({

@@ -31,6 +31,33 @@ export const wipeAllTables = internalMutation({
   },
 });
 
+export const wipeAllTablesForDev = mutation({
+  handler: async (ctx) => {
+    if (process.env.STOP_NOT_ALLOWED) throw new Error('Reset not allowed');
+    for (const tableName of Object.keys(schema.tables)) {
+      if (excludedTables.includes(tableName as TableNames)) {
+        continue;
+      }
+      await ctx.scheduler.runAfter(0, internal.testing.deletePage, { tableName, cursor: null });
+    }
+  },
+});
+
+export const deleteEmptyMessagesForDev = mutation({
+  handler: async (ctx) => {
+    if (process.env.STOP_NOT_ALLOWED) throw new Error('Cleanup not allowed');
+    const messages = await ctx.db.query('messages').collect();
+    let deleted = 0;
+    for (const message of messages) {
+      if (!message.text.trim()) {
+        await ctx.db.delete(message._id);
+        deleted++;
+      }
+    }
+    return { deleted };
+  },
+});
+
 export const deletePage = internalMutation({
   args: {
     tableName: v.string(),

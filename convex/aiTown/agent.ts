@@ -316,10 +316,22 @@ export const agentSendMessage = internalMutation({
     operationId: v.string(),
   },
   handler: async (ctx, args) => {
+    const text = args.text.trim();
+    if (!text) {
+      console.warn(`Skipping empty agent message for ${args.agentId} (${args.operationId})`);
+      await insertInput(ctx, args.worldId, 'agentFinishSendingMessage', {
+        conversationId: args.conversationId,
+        agentId: args.agentId,
+        timestamp: Date.now(),
+        leaveConversation: args.leaveConversation,
+        operationId: args.operationId,
+      });
+      return;
+    }
     await ctx.db.insert('messages', {
       conversationId: args.conversationId,
       author: args.playerId,
-      text: args.text,
+      text,
       messageUuid: args.messageUuid,
       worldId: args.worldId,
     });

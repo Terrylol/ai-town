@@ -1,17 +1,29 @@
 // That's right! No imports and no dependencies 🤯
 
 const OPENAI_EMBEDDING_DIMENSION = 1536;
+const CUSTOM_EMBEDDING_DIMENSION = 3072;
 const TOGETHER_EMBEDDING_DIMENSION = 768;
 const OLLAMA_EMBEDDING_DIMENSION = 1024;
 
-export const EMBEDDING_DIMENSION: number = OLLAMA_EMBEDDING_DIMENSION;
+export const EMBEDDING_DIMENSION: number = CUSTOM_EMBEDDING_DIMENSION;
 
 export function detectMismatchedLLMProvider() {
   switch (EMBEDDING_DIMENSION) {
     case OPENAI_EMBEDDING_DIMENSION:
-      if (!process.env.OPENAI_API_KEY) {
+      if (
+        !process.env.OPENAI_API_KEY &&
+        !process.env.LLM_API_URL &&
+        !process.env.LLM_EMBEDDING_API_URL
+      ) {
         throw new Error(
-          "Are you trying to use OpenAI? If so, run: npx convex env set OPENAI_API_KEY 'your-key'",
+          "Are you trying to use OpenAI or a 1536-dimensional custom embedding model? If so, set OPENAI_API_KEY or LLM_EMBEDDING_API_URL.",
+        );
+      }
+      break;
+    case CUSTOM_EMBEDDING_DIMENSION:
+      if (!process.env.LLM_API_URL && !process.env.LLM_EMBEDDING_API_URL) {
+        throw new Error(
+          "Are you trying to use a 3072-dimensional custom embedding model? If so, set LLM_EMBEDDING_API_URL.",
         );
       }
       break;
@@ -25,9 +37,9 @@ export function detectMismatchedLLMProvider() {
     case OLLAMA_EMBEDDING_DIMENSION:
       break;
     default:
-      if (!process.env.LLM_API_URL) {
+      if (!process.env.LLM_API_URL && !process.env.LLM_EMBEDDING_API_URL) {
         throw new Error(
-          "Are you trying to use a custom cloud-hosted LLM? If so, run: npx convex env set LLM_API_URL 'your-url'",
+          "Are you trying to use a custom cloud-hosted LLM? If so, run: npx convex env set LLM_EMBEDDING_API_URL 'your-url'",
         );
       }
       break;
@@ -36,11 +48,17 @@ export function detectMismatchedLLMProvider() {
 
 export interface LLMConfig {
   provider: 'openai' | 'together' | 'ollama' | 'custom';
-  url: string; // Should not have a trailing slash
+  url: string; // Should not have a trailing slash. Used as the default URL.
+  chatUrl: string;
+  embeddingUrl: string;
+  chatCompletionsUrl: string;
+  embeddingsUrl: string;
   chatModel: string;
   embeddingModel: string;
   stopWords: string[];
   apiKey: string | undefined;
+  chatApiKey: string | undefined;
+  embeddingApiKey: string | undefined;
 }
 
 export function getLLMConfig(): LLMConfig {
@@ -52,10 +70,16 @@ export function getLLMConfig(): LLMConfig {
     return {
       provider: 'openai',
       url: 'https://api.openai.com',
+      chatUrl: 'https://api.openai.com',
+      embeddingUrl: 'https://api.openai.com',
+      chatCompletionsUrl: 'https://api.openai.com/v1/chat/completions',
+      embeddingsUrl: 'https://api.openai.com/v1/embeddings',
       chatModel: process.env.OPENAI_CHAT_MODEL ?? 'gpt-4o-mini',
       embeddingModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-ada-002',
       stopWords: [],
       apiKey: process.env.OPENAI_API_KEY,
+      chatApiKey: process.env.OPENAI_API_KEY,
+      embeddingApiKey: process.env.OPENAI_API_KEY,
     };
   }
   if (process.env.TOGETHER_API_KEY) {
@@ -65,27 +89,43 @@ export function getLLMConfig(): LLMConfig {
     return {
       provider: 'together',
       url: 'https://api.together.xyz',
+      chatUrl: 'https://api.together.xyz',
+      embeddingUrl: 'https://api.together.xyz',
+      chatCompletionsUrl: 'https://api.together.xyz/v1/chat/completions',
+      embeddingsUrl: 'https://api.together.xyz/v1/embeddings',
       chatModel: process.env.TOGETHER_CHAT_MODEL ?? 'meta-llama/Llama-3-8b-chat-hf',
       embeddingModel:
         process.env.TOGETHER_EMBEDDING_MODEL ?? 'togethercomputer/m2-bert-80M-8k-retrieval',
       stopWords: ['<|eot_id|>'],
       apiKey: process.env.TOGETHER_API_KEY,
+      chatApiKey: process.env.TOGETHER_API_KEY,
+      embeddingApiKey: process.env.TOGETHER_API_KEY,
     };
   }
-  if (process.env.LLM_API_URL) {
-    const apiKey = process.env.LLM_API_KEY;
+  if (process.env.LLM_API_URL || process.env.LLM_CHAT_API_URL || process.env.LLM_EMBEDDING_API_URL) {
     const url = process.env.LLM_API_URL;
+    const chatUrl = process.env.LLM_CHAT_API_URL ?? url;
+    if (!chatUrl) throw new Error('LLM_CHAT_API_URL or LLM_API_URL is required');
+    const embeddingUrl = process.env.LLM_EMBEDDING_API_URL ?? url;
+    if (!embeddingUrl) throw new Error('LLM_EMBEDDING_API_URL or LLM_API_URL is required');
     const chatModel = process.env.LLM_MODEL;
     if (!chatModel) throw new Error('LLM_MODEL is required');
     const embeddingModel = process.env.LLM_EMBEDDING_MODEL;
     if (!embeddingModel) throw new Error('LLM_EMBEDDING_MODEL is required');
+    const apiKey = process.env.LLM_API_KEY;
     return {
       provider: 'custom',
-      url,
+      url: url ?? chatUrl,
+      chatUrl,
+      embeddingUrl,
+      chatCompletionsUrl: process.env.LLM_CHAT_COMPLETIONS_URL ?? chatUrl + '/v1/chat/completions',
+      embeddingsUrl: process.env.LLM_EMBEDDINGS_URL ?? embeddingUrl + '/v1/embeddings',
       chatModel,
       embeddingModel,
       stopWords: [],
       apiKey,
+      chatApiKey: process.env.LLM_CHAT_API_KEY ?? apiKey,
+      embeddingApiKey: process.env.LLM_EMBEDDING_API_KEY ?? apiKey,
     };
   }
   // Assume Ollama
@@ -102,17 +142,23 @@ export function getLLMConfig(): LLMConfig {
   return {
     provider: 'ollama',
     url: process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434',
+    chatUrl: process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434',
+    embeddingUrl: process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434',
+    chatCompletionsUrl: (process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434') + '/v1/chat/completions',
+    embeddingsUrl: (process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434') + '/v1/embeddings',
     chatModel: process.env.OLLAMA_MODEL ?? 'llama3',
     embeddingModel: process.env.OLLAMA_EMBEDDING_MODEL ?? 'mxbai-embed-large',
     stopWords: ['<|eot_id|>'],
     apiKey: undefined,
+    chatApiKey: undefined,
+    embeddingApiKey: undefined,
   };
 }
 
-const AuthHeaders = (): Record<string, string> =>
-  getLLMConfig().apiKey
+const AuthHeaders = (apiKey: string | undefined): Record<string, string> =>
+  apiKey
     ? {
-        Authorization: 'Bearer ' + getLLMConfig().apiKey,
+        Authorization: 'Bearer ' + apiKey,
       }
     : {};
 
@@ -147,11 +193,11 @@ export async function chatCompletion(
     retries,
     ms,
   } = await retryWithBackoff(async () => {
-    const result = await fetch(config.url + '/v1/chat/completions', {
+    const result = await fetch(config.chatCompletionsUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...AuthHeaders(),
+        ...AuthHeaders(config.chatApiKey),
       },
 
       body: JSON.stringify(body),
@@ -217,11 +263,11 @@ export async function fetchEmbeddingBatch(texts: string[]) {
     retries,
     ms,
   } = await retryWithBackoff(async () => {
-    const result = await fetch(config.url + '/v1/embeddings', {
+    const result = await fetch(config.embeddingsUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...AuthHeaders(),
+        ...AuthHeaders(config.embeddingApiKey),
       },
 
       body: JSON.stringify({
@@ -263,7 +309,7 @@ export async function fetchModeration(content: string) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...AuthHeaders(),
+        ...AuthHeaders(getLLMConfig().apiKey),
       },
 
       body: JSON.stringify({
