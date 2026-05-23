@@ -80,10 +80,11 @@ docker compose --env-file .env.docker exec backend ./generate_admin_key.sh
 
 把输出的 key 填回 `.env.docker` 的 `CONVEX_SELF_HOSTED_ADMIN_KEY`，并创建 CLI 专用文件 `.env.selfhost.local`：
 
-```env
-CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210
-CONVEX_SELF_HOSTED_ADMIN_KEY=<your-admin-key>
+```bash
+cp .env.selfhost.example .env.selfhost.local
 ```
+
+然后把 admin key 填入 `.env.selfhost.local`。
 
 `.env.selfhost.local` 和 `.env.docker` 都已被 `.gitignore` 忽略，不要提交。
 
@@ -93,10 +94,10 @@ CONVEX_SELF_HOSTED_ADMIN_KEY=<your-admin-key>
 npx convex dev --env-file .env.selfhost.local --run init --once
 ```
 
-确认 `.env.local` 指向本地 Convex：
+创建前端环境文件，并确认 `.env.local` 指向本地 Convex：
 
-```env
-VITE_CONVEX_URL=http://127.0.0.1:3210
+```bash
+cp .env.example .env.local
 ```
 
 启动前端：
