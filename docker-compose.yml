@@ -39,20 +39,5 @@ services:
       backend:
         condition: service_healthy
 
-  convex-deploy:
-    build:
-      context: .
-      target: dev
-    profiles: ['tools']
-    volumes:
-      - .:/usr/src/app
-    environment:
-      CONVEX_SELF_HOSTED_URL: ${CONVEX_SELF_HOSTED_URL:-http://backend:3210}
-      CONVEX_SELF_HOSTED_ADMIN_KEY: ${CONVEX_SELF_HOSTED_ADMIN_KEY}
-    depends_on:
-      backend:
-        condition: service_healthy
-    command: ['npx', 'convex', 'dev', '--run', 'init', '--once']
-
 volumes:
   convex-data:
