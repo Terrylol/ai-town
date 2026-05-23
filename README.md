@@ -14,7 +14,6 @@ AI Town 是一个可部署、可定制的 AI 小镇模拟项目。玩家可以�
 
 - [技术解析](./doc/technical-analysis.md)：项目功能、架构、模拟循环、Agent 行为、LLM/embedding 接入、数据模型和扩展点。
 - [原始架构说明](./ARCHITECTURE.md)：上游项目的英文架构文档。
-- [Fly.io 部署说明](./fly/README.md)：上游保留的 Fly.io 部署参考。
 
 ## 技术栈
 

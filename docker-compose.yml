@@ -39,22 +39,6 @@ services:
       backend:
         condition: service_healthy
 
-  frontend:
-    build:
-      context: .
-      target: dev
-    ports:
-      - '${FRONTEND_PORT:-5173}:5173'
-    volumes:
-      - .:/usr/src/app
-      - frontend-node-modules:/usr/src/app/node_modules
-    environment:
-      VITE_CONVEX_URL: ${VITE_CONVEX_URL:-http://127.0.0.1:${CONVEX_PORT:-3210}}
-    depends_on:
-      backend:
-        condition: service_healthy
-    command: ['npm', 'run', 'dev:frontend', '--', '--host', '0.0.0.0']
-
   convex-deploy:
     build:
       context: .
@@ -62,7 +46,6 @@ services:
     profiles: ['tools']
     volumes:
       - .:/usr/src/app
-      - frontend-node-modules:/usr/src/app/node_modules
     environment:
       CONVEX_SELF_HOSTED_URL: ${CONVEX_SELF_HOSTED_URL:-http://backend:3210}
       CONVEX_SELF_HOSTED_ADMIN_KEY: ${CONVEX_SELF_HOSTED_ADMIN_KEY}
@@ -73,4 +56,3 @@ services:
 
 volumes:
   convex-data:
-  frontend-node-modules:
