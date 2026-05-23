@@ -37,7 +37,97 @@ public/assets/       前端静态资源
 doc/                 中文项目文档
 ```
 
-## 快速开始
+## 推荐启动方式：本地自托管 Convex
+
+为了避免 Convex 云端容量限制，推荐把 Convex backend 跑在本机 Docker 里，前端继续用本机 Vite 开发服务器。
+
+本地服务：
+
+- 前端：`http://localhost:5173/ai-town`
+- Convex backend：`http://localhost:3210`
+- Convex dashboard：`http://localhost:6791`
+
+### 首次配置
+
+安装依赖：
+
+```bash
+npm install
+```
+
+创建 Docker 环境文件：
+
+```bash
+cp .env.docker.example .env.docker
+```
+
+编辑 `.env.docker`：
+
+- 填入 `LLM_CHAT_*` 和 `LLM_EMBEDDING_*` 配置。
+- 设置 `INSTANCE_SECRET`，必须是 hex 字符串，可用 `openssl rand -hex 32` 生成。
+
+启动本地 Convex backend 和 dashboard：
+
+```bash
+docker compose --env-file .env.docker up -d backend dashboard
+```
+
+生成本地 Convex admin key：
+
+```bash
+docker compose --env-file .env.docker exec backend ./generate_admin_key.sh
+```
+
+把输出的 key 填回 `.env.docker` 的 `CONVEX_SELF_HOSTED_ADMIN_KEY`，并创建 CLI 专用文件 `.env.selfhost.local`：
+
+```env
+CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210
+CONVEX_SELF_HOSTED_ADMIN_KEY=<your-admin-key>
+```
+
+`.env.selfhost.local` 和 `.env.docker` 都已被 `.gitignore` 忽略，不要提交。
+
+把 Convex functions 部署到本地 backend，并初始化默认 world：
+
+```bash
+npx convex dev --env-file .env.selfhost.local --run init --once
+```
+
+确认 `.env.local` 指向本地 Convex：
+
+```env
+VITE_CONVEX_URL=http://127.0.0.1:3210
+```
+
+启动前端：
+
+```bash
+npm run dev:frontend -- --host 0.0.0.0
+```
+
+### 日常启动
+
+```bash
+docker compose --env-file .env.docker up -d backend dashboard
+npm run dev:frontend -- --host 0.0.0.0
+```
+
+### 后端代码改动后
+
+如果修改了 `convex/` 下的后端函数、schema 或 Agent 逻辑，重新部署到本地 Convex：
+
+```bash
+npx convex dev --env-file .env.selfhost.local --once
+```
+
+如果需要重置数据并重新初始化：
+
+```bash
+npx convex run --env-file .env.selfhost.local testing:wipeAllTablesForDev
+npx convex run --env-file .env.selfhost.local init
+```
+
+## 可选：使用 Convex 云端开发
 
 安装依赖：
 
@@ -70,9 +160,9 @@ http://localhost:5173/ai-town
 VITE_CONVEX_URL=https://your-deployment.convex.cloud
 ```
 
-## 初始化世界
+## 云端部署初始化
 
-首次部署或重置数据后，运行：
+如果使用 Convex 云端，首次部署或重置数据后运行：
 
 ```bash
 npx convex run init
@@ -87,7 +177,7 @@ npx convex run testing:wipeAllTablesForDev
 npx convex run init
 ```
 
-注意：清理命令会删除远程 Convex dev deployment 中的游戏数据，请只在开发环境使用。
+注意：清理命令会删除当前 Convex deployment 中的游戏数据，请只在开发环境使用。本地自托管时请使用前文带 `--env-file .env.selfhost.local` 的命令。
 
 ## LLM 配置
 
@@ -113,6 +203,12 @@ npx convex env set LLM_EMBEDDING_API_KEY 'your-embedding-key'
 npx convex env set LLM_EMBEDDING_MODEL 'your-embedding-model'
 ```
 
+本地自托管时，给上述命令加上 `--env-file .env.selfhost.local`，例如：
+
+```bash
+npx convex env --env-file .env.selfhost.local set LLM_MODEL 'your-chat-model'
+```
+
 如果你的服务符合标准 OpenAI 路径，可以只设置 base URL；如果服务路径不是标准 `/v1/chat/completions` 或 `/v1/embeddings`，请设置完整 URL：
 
 ```bash
@@ -133,31 +229,31 @@ npm run build
 查看 Convex 日志：
 
 ```bash
-npx convex logs --history 80
+npx convex logs --env-file .env.selfhost.local --history 80
 ```
 
 查看 Convex 环境变量：
 
 ```bash
-npx convex env list
+npx convex env --env-file .env.selfhost.local list
 ```
 
 停止模拟引擎：
 
 ```bash
-npx convex run testing:stop
+npx convex run --env-file .env.selfhost.local testing:stop
 ```
 
 恢复模拟引擎：
 
 ```bash
-npx convex run testing:resume
+npx convex run --env-file .env.selfhost.local testing:resume
 ```
 
 清理空消息：
 
 ```bash
-npx convex run testing:deleteEmptyMessagesForDev
+npx convex run --env-file .env.selfhost.local testing:deleteEmptyMessagesForDev
 ```
 
 ## 自动暂停机制
@@ -170,22 +266,6 @@ npx convex run testing:deleteEmptyMessagesForDev
 - `convex/world.ts`
 - `convex/crons.ts`
 - `convex/constants.ts`
-
-## Docker 自托管
-
-项目保留了上游 Docker Compose 配置，可以使用自托管 Convex：
-
-```bash
-docker compose up --build -d
-```
-
-本地服务：
-
-- 前端：`http://localhost:5173`
-- Convex backend：`http://localhost:3210`
-- Convex dashboard：`http://localhost:6791`
-
-当前推荐开发方式仍是使用 Convex 云端 dev deployment，配置更简单，也更接近生产部署。
 
 ## 授权与来源
 

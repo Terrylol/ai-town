@@ -58,6 +58,68 @@ export const deleteEmptyMessagesForDev = mutation({
   },
 });
 
+export const deleteNonBusinessSelectionDebugForDev = mutation({
+  handler: async (ctx) => {
+    if (process.env.STOP_NOT_ALLOWED) throw new Error('Cleanup not allowed');
+    const rows = await ctx.db.query('agentSelectionDebug').collect();
+    let deleted = 0;
+    for (const row of rows) {
+      if (row.stage !== 'llm-selected' && row.stage !== 'llm-declined') {
+        await ctx.db.delete(row._id);
+        deleted++;
+      }
+    }
+    return { deleted };
+  },
+});
+
+export const clearStaleEmptyConversationsForDev = mutation({
+  handler: async (ctx) => {
+    if (process.env.STOP_NOT_ALLOWED) throw new Error('Cleanup not allowed');
+    const { worldStatus } = await getDefaultWorld(ctx.db);
+    const world = await ctx.db.get(worldStatus.worldId);
+    if (!world) {
+      throw new Error(`World ${worldStatus.worldId} not found`);
+    }
+    const staleConversationIds = new Set(
+      world.conversations
+        .filter((conversation) => conversation.numMessages === 0)
+        .map((conversation) => conversation.id),
+    );
+    if (staleConversationIds.size === 0) {
+      return { clearedConversations: 0, clearedOperations: 0 };
+    }
+    const nextAgents = world.agents.map((agent) => {
+      if (
+        agent.inProgressOperation?.name === 'agentGenerateMessage' &&
+        agent.toRemember &&
+        staleConversationIds.has(agent.toRemember)
+      ) {
+        const { inProgressOperation, ...rest } = agent;
+        return rest;
+      }
+      if (agent.inProgressOperation?.name === 'agentGenerateMessage') {
+        const { inProgressOperation, ...rest } = agent;
+        return rest;
+      }
+      return agent;
+    });
+    const clearedOperations = world.agents.filter(
+      (agent) => agent.inProgressOperation?.name === 'agentGenerateMessage',
+    ).length;
+    await ctx.db.patch(world._id, {
+      conversations: world.conversations.filter(
+        (conversation) => !staleConversationIds.has(conversation.id),
+      ),
+      agents: nextAgents,
+    });
+    return {
+      clearedConversations: staleConversationIds.size,
+      clearedOperations,
+    };
+  },
+});
+
 export const deletePage = internalMutation({
   args: {
     tableName: v.string(),

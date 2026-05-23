@@ -62,7 +62,11 @@ export async function startConversationMessage(
     messages: [
       {
         role: 'system',
-        content: prompt.join('\n'),
+        content: prompt.slice(0, -1).join('\n'),
+      },
+      {
+        role: 'user',
+        content: lastPrompt,
       },
     ],
     max_tokens: 300,

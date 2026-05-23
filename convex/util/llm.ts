@@ -221,6 +221,12 @@ export async function chatCompletion(
       if (content === undefined) {
         throw new Error('Unexpected result from OpenAI: ' + JSON.stringify(json));
       }
+      if (content === '') {
+        console.warn(
+          '[llm] empty chat content response',
+          JSON.stringify(json).slice(0, 2000),
+        );
+      }
       console.log(content);
       return content;
     }

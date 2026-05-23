@@ -102,6 +102,9 @@ export const agentInputs = {
         agent.inProgressOperation.operationId !== args.operationId
       ) {
         console.debug(`Agent ${agentId} wasn't sending a message ${args.operationId}`);
+        if (conversation.isTyping?.playerId === agent.playerId) {
+          delete conversation.isTyping;
+        }
         return null;
       }
       delete agent.inProgressOperation;
@@ -113,6 +116,41 @@ export const agentInputs = {
       if (args.leaveConversation) {
         conversation.leave(game, now, player);
       }
+      return null;
+    },
+  }),
+  agentMessageFailed: inputHandler({
+    args: {
+      agentId,
+      conversationId,
+      operationId: v.string(),
+      messageUuid: v.string(),
+      error: v.optional(v.string()),
+    },
+    handler: (game, now, args) => {
+      const agentId = parseGameId('agents', args.agentId);
+      const agent = game.world.agents.get(agentId);
+      if (!agent) {
+        throw new Error(`Couldn't find agent: ${agentId}`);
+      }
+      const conversationId = parseGameId('conversations', args.conversationId);
+      const conversation = game.world.conversations.get(conversationId);
+      if (!conversation) {
+        console.debug(`Couldn't clean up failed message for missing conversation ${conversationId}`);
+        return null;
+      }
+      if (agent.inProgressOperation?.operationId === args.operationId) {
+        delete agent.inProgressOperation;
+      }
+      if (
+        conversation.isTyping?.playerId === agent.playerId &&
+        conversation.isTyping.messageUuid === args.messageUuid
+      ) {
+        delete conversation.isTyping;
+      }
+      console.warn(
+        `Agent ${agentId} failed to generate message for ${conversationId}: ${args.error ?? 'unknown error'}`,
+      );
       return null;
     },
   }),

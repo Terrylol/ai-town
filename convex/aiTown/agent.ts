@@ -164,6 +164,27 @@ export class Agent {
           // Wait for the other player to finish typing.
           return;
         }
+        const tooLongDeadline = started + MAX_CONVERSATION_DURATION;
+        if (tooLongDeadline < now || conversation.numMessages > MAX_CONVERSATION_MESSAGES) {
+          if (!conversation.lastMessage) {
+            console.log(`${player.id} stopping stale empty conversation with ${otherPlayer.id}.`);
+            conversation.leave(game, now, player);
+            return;
+          }
+          console.log(`${player.id} leaving conversation with ${otherPlayer.id}.`);
+          const messageUuid = crypto.randomUUID();
+          conversation.setIsTyping(now, player, messageUuid);
+          this.startOperation(game, now, 'agentGenerateMessage', {
+            worldId: game.worldId,
+            playerId: player.id,
+            agentId: this.id,
+            conversationId: conversation.id,
+            otherPlayerId: otherPlayer.id,
+            messageUuid,
+            type: 'leave',
+          });
+          return;
+        }
         if (!conversation.lastMessage) {
           const isInitiator = conversation.creator === player.id;
           const awkwardDeadline = started + AWKWARD_CONVERSATION_TIMEOUT;
@@ -187,23 +208,6 @@ export class Agent {
             // Wait on the other player to say something up to the awkward deadline.
             return;
           }
-        }
-        // See if the conversation has been going on too long and decide to leave.
-        const tooLongDeadline = started + MAX_CONVERSATION_DURATION;
-        if (tooLongDeadline < now || conversation.numMessages > MAX_CONVERSATION_MESSAGES) {
-          console.log(`${player.id} leaving conversation with ${otherPlayer.id}.`);
-          const messageUuid = crypto.randomUUID();
-          conversation.setIsTyping(now, player, messageUuid);
-          this.startOperation(game, now, 'agentGenerateMessage', {
-            worldId: game.worldId,
-            playerId: player.id,
-            agentId: this.id,
-            conversationId: conversation.id,
-            otherPlayerId: otherPlayer.id,
-            messageUuid,
-            type: 'leave',
-          });
-          return;
         }
         // Wait for the awkward deadline if we sent the last message.
         if (conversation.lastMessage.author === player.id) {
@@ -370,11 +374,113 @@ export const findConversationCandidate = internalQuery({
           continue;
         }
       }
-      candidates.push({ id: otherPlayer.id, position });
+      candidates.push({ id: otherPlayer.id, position: otherPlayer.position });
     }
 
     // Sort by distance and take the nearest candidate.
     candidates.sort((a, b) => distance(a.position, position) - distance(b.position, position));
     return candidates[0]?.id;
+  },
+});
+
+export const conversationCandidatePromptData = internalQuery({
+  args: {
+    now: v.number(),
+    worldId: v.id('worlds'),
+    player: v.object(serializedPlayer),
+    otherFreePlayers: v.array(v.object(serializedPlayer)),
+  },
+  handler: async (ctx, { now, worldId, player, otherFreePlayers }) => {
+    const playerDescription = await ctx.db
+      .query('playerDescriptions')
+      .withIndex('worldId', (q) => q.eq('worldId', worldId).eq('playerId', player.id))
+      .first();
+    if (!playerDescription) {
+      throw new Error(`Player description for ${player.id} not found`);
+    }
+    const world = await ctx.db.get(worldId);
+    if (!world) {
+      throw new Error(`World ${worldId} not found`);
+    }
+    const playerAgent = world.agents.find((a) => a.playerId === player.id);
+    const agentDescription =
+      playerAgent &&
+      (await ctx.db
+        .query('agentDescriptions')
+        .withIndex('worldId', (q) => q.eq('worldId', worldId).eq('agentId', playerAgent.id))
+        .first());
+    const recentConversationMemories = await ctx.db
+      .query('memories')
+      .withIndex('playerId_type', (q) => q.eq('playerId', player.id).eq('data.type', 'conversation'))
+      .order('desc')
+      .take(50);
+    const candidates = [];
+    for (const otherPlayer of otherFreePlayers) {
+      const lastMember = await ctx.db
+        .query('participatedTogether')
+        .withIndex('edge', (q) =>
+          q.eq('worldId', worldId).eq('player1', player.id).eq('player2', otherPlayer.id),
+        )
+        .order('desc')
+        .first();
+      if (lastMember && now < lastMember.ended + PLAYER_CONVERSATION_COOLDOWN) {
+        continue;
+      }
+      const otherDescription = await ctx.db
+        .query('playerDescriptions')
+        .withIndex('worldId', (q) => q.eq('worldId', worldId).eq('playerId', otherPlayer.id))
+        .first();
+      if (!otherDescription) {
+        continue;
+      }
+      const relatedMemories = [];
+      for (const memory of recentConversationMemories) {
+        if (memory.data.type === 'conversation' && memory.data.playerIds.includes(otherPlayer.id)) {
+          relatedMemories.push(memory);
+        }
+        if (relatedMemories.length >= 3) {
+          break;
+        }
+      }
+      candidates.push({
+        playerId: otherPlayer.id,
+        name: otherDescription.name,
+        description: otherDescription.description,
+        distance: distance(player.position, otherPlayer.position),
+        lastConversationEnded: lastMember?.ended,
+        relatedMemories: relatedMemories.map((m) => ({
+          description: m.description,
+          importance: m.importance,
+          lastAccess: m.lastAccess,
+        })),
+      });
+    }
+    return {
+      player: {
+        playerId: player.id,
+        name: playerDescription.name,
+        identity: playerDescription.description,
+        plan: agentDescription?.plan ?? '',
+      },
+      candidates,
+    };
+  },
+});
+
+export const insertSelectionDebug = internalMutation({
+  args: {
+    worldId: v.id('worlds'),
+    playerId,
+    ts: v.number(),
+    stage: v.string(),
+    candidateIds: v.array(playerId),
+    selectedPlayerId: v.optional(playerId),
+    fallbackPlayerId: v.optional(playerId),
+    reason: v.optional(v.string()),
+    raw: v.optional(v.string()),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert('agentSelectionDebug', args);
   },
 });

@@ -76,4 +76,17 @@ export const aiTownTables = {
     .index('edge', ['worldId', 'player1', 'player2', 'ended'])
     .index('conversation', ['worldId', 'player1', 'conversationId'])
     .index('playerHistory', ['worldId', 'player1', 'ended']),
+
+  agentSelectionDebug: defineTable({
+    worldId: v.id('worlds'),
+    playerId,
+    ts: v.number(),
+    stage: v.string(),
+    candidateIds: v.array(playerId),
+    selectedPlayerId: v.optional(playerId),
+    fallbackPlayerId: v.optional(playerId),
+    reason: v.optional(v.string()),
+    raw: v.optional(v.string()),
+    error: v.optional(v.string()),
+  }).index('byTs', ['worldId', 'ts']),
 };
