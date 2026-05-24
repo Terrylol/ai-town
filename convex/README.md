@@ -1,90 +1,17 @@
-# Welcome to your Convex functions directory!
+# Convex 后端目录
 
-Write your Convex functions here.
-See https://docs.convex.dev/functions for more.
+这个目录存放 AI Town 的 Convex 后端代码，包括数据库 schema、query、mutation、action、调度任务、游戏引擎和 Agent 逻辑。
 
-A query function that takes two arguments looks like:
+主要入口：
 
-```ts
-// functions.js
-import { query } from "./_generated/server";
-import { v } from "convex/values";
+- `schema.ts`：组合项目的所有 Convex 数据表定义。
+- `world.ts`：前端使用的 world 查询和控制接口。
+- `init.ts`：初始化默认地图、角色和 world。
+- `crons.ts`：定时任务配置。
+- `http.ts`：Convex HTTP 路由入口。
+- `aiTown/`：AI Town 具体游戏规则、输入处理、玩家移动、对话和 Agent tick。
+- `engine/`：通用模拟引擎、输入队列、历史值压缩和相关测试。
+- `agent/`：Agent 对话、记忆、embedding 缓存和 prompt 逻辑。
+- `util/llm.ts`：OpenAI-compatible chat/embedding API 接入。
 
-export const myQueryFunction = query({
-  // Validators for arguments.
-  args: {
-    first: v.number(),
-    second: v.string(),
-  },
-
-  // Function implementation.
-  handler: async (ctx, args) => {
-    // Read the database as many times as you need here.
-    // See https://docs.convex.dev/database/reading-data.
-    const documents = await ctx.db.query("tablename").collect();
-
-    // Arguments passed from the client are properties of the args object.
-    console.log(args.first, args.second);
-
-    // Write arbitrary JavaScript here: filter, aggregate, build derived data,
-    // remove non-public properties, or create new objects.
-    return documents;
-  },
-});
-```
-
-Using this query function in a React component looks like:
-
-```ts
-const data = useQuery(api.functions.myQueryFunction, {
-  first: 10,
-  second: "hello",
-});
-```
-
-A mutation function looks like:
-
-```ts
-// functions.js
-import { mutation } from "./_generated/server";
-import { v } from "convex/values";
-
-export const myMutationFunction = mutation({
-  // Validators for arguments.
-  args: {
-    first: v.string(),
-    second: v.string(),
-  },
-
-  // Function implementation.
-  handler: async (ctx, args) => {
-    // Insert or modify documents in the database here.
-    // Mutations can also read from the database like queries.
-    // See https://docs.convex.dev/database/writing-data.
-    const message = { body: args.first, author: args.second };
-    const id = await ctx.db.insert("messages", message);
-
-    // Optionally, return a value from your mutation.
-    return await ctx.db.get(id);
-  },
-});
-```
-
-Using this mutation function in a React component looks like:
-
-```ts
-const mutation = useMutation(api.functions.myMutationFunction);
-function handleButtonPress() {
-  // fire and forget, the most common way to use mutations
-  mutation({ first: "Hello!", second: "me" });
-  // OR
-  // use the result once the mutation has completed
-  mutation({ first: "Hello!", second: "me" }).then((result) =>
-    console.log(result),
-  );
-}
-```
-
-Use the Convex CLI to push your functions to a deployment. See everything
-the Convex CLI can do by running `npx convex -h` in your project root
-directory. To learn more, launch the docs with `npx convex docs`.
+常用命令请看根目录 [README](../README.md)。架构说明见 [doc/architecture.md](../doc/architecture.md)，数据表速查见 [doc/data-tables.md](../doc/data-tables.md)。
